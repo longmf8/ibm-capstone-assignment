@@ -1,231 +1,125 @@
 # Import required libraries
 import pandas as pd
 import dash
-from dash import dcc
-from dash import html
-from dash.dependencies import Input, Output, State
-from jupyter_dash import JupyterDash
-import plotly.graph_objects as go
+import dash_html_components as html
+import dash_core_components as dcc
+from dash.dependencies import Input, Output
 import plotly.express as px
-from dash import no_update
-
-
-# Create a dash application
-app = JupyterDash(__name__)
-JupyterDash.infer_jupyter_proxy_config()
-
-# REVIEW1: Clear the layout and do not display exception till callback gets executed
-app.config.suppress_callback_exceptions = True
 
 # Read the airline data into pandas dataframe
-airline_data =  pd.read_csv('https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/IBMDeveloperSkillsNetwork-DV0101EN-SkillsNetwork/Data%20Files/airline_data.csv', 
-                            encoding = "ISO-8859-1",
-                            dtype={'Div1Airport': str, 'Div1TailNum': str, 
-                                   'Div2Airport': str, 'Div2TailNum': str})
+spacex_df = pd.read_csv("spacex_launch_dash.csv")
+max_payload = spacex_df['Payload Mass (kg)'].max()
+min_payload = spacex_df['Payload Mass (kg)'].min()
 
+unique_launch_sites = spacex_df['Launch Site'].unique().tolist()
+launch_sites = []
+launch_sites.append({'label': 'All Sites', 'value': 'All Sites'})
+for launch_site in unique_launch_sites:
+    launch_sites.append({'label': launch_site, 'value': launch_site})
 
-# List of years 
-year_list = [i for i in range(2005, 2021, 1)]
+marks_dict = {}
+for i in range(0,11000,1000):
+    marks_dict[i] = {'label': str(i)+' Kg'}
 
-"""Compute graph data for creating yearly airline performance report 
+# Create a dash application
+app = dash.Dash(__name__)
 
-Function that takes airline data as input and create 5 dataframes based on the grouping condition to be used for plottling charts and grphs.
+# Create an app layout
+app.layout = html.Div(children=[html.H1('SpaceX Launch Records Dashboard',
+                                        style={'textAlign': 'center', 'color': '#503D36',
+                                               'font-size': 40}),
+                                # TASK 1: Add a dropdown list to enable Launch Site selection
+                                # The default select value is for ALL sites
+                                # dcc.Dropdown(id='site-dropdown',...)
+                                dcc.Dropdown(
+                                    id = 'site-dropdown',
+                                    options = launch_sites,
+                                    placeholder = 'Select a Launch Site',
+                                    searchable = True ,
+                                    value = 'All Sites'
+                                ),
+                                html.Br(),
 
-Argument:
-     
-    df: Filtered dataframe
-    
-Returns:
-   Dataframes to create graph. 
-"""
-def compute_data_choice_1(df):
-    # Cancellation Category Count
-    bar_data = df.groupby(['Month','CancellationCode'])['Flights'].sum().reset_index()
-    # Average flight time by reporting airline
-    line_data = df.groupby(['Month','Reporting_Airline'])['AirTime'].mean().reset_index()
-    # Diverted Airport Landings
-    div_data = df[df['DivAirportLandings'] != 0.0]
-    # Source state count
-    map_data = df.groupby(['OriginState'])['Flights'].sum().reset_index()
-    # Destination state count
-    tree_data = df.groupby(['DestState', 'Reporting_Airline'])['Flights'].sum().reset_index()
-    return bar_data, line_data, div_data, map_data, tree_data
+                                # TASK 2: Add a pie chart to show the total successful launches count for all sites
+                                # If a specific launch site was selected, show the Success vs. Failed counts for the site
+                                html.Div(dcc.Graph(id='success-pie-chart')),
+                                html.Br(),
 
-
-"""Compute graph data for creating yearly airline delay report
-
-This function takes in airline data and selected year as an input and performs computation for creating charts and plots.
-
-Arguments:
-    df: Input airline data.
-    
-Returns:
-    Computed average dataframes for carrier delay, weather delay, NAS delay, security delay, and late aircraft delay.
-"""
-def compute_data_choice_2(df):
-    # Compute delay averages
-    avg_car = df.groupby(['Month','Reporting_Airline'])['CarrierDelay'].mean().reset_index()
-    avg_weather = df.groupby(['Month','Reporting_Airline'])['WeatherDelay'].mean().reset_index()
-    avg_NAS = df.groupby(['Month','Reporting_Airline'])['NASDelay'].mean().reset_index()
-    avg_sec = df.groupby(['Month','Reporting_Airline'])['SecurityDelay'].mean().reset_index()
-    avg_late = df.groupby(['Month','Reporting_Airline'])['LateAircraftDelay'].mean().reset_index()
-    return avg_car, avg_weather, avg_NAS, avg_sec, avg_late
-
-
-# Application layout
-app.layout = html.Div(children=[ 
-                                # TODO1: Add title to the dashboard
-                              
-                                 html.Div(
-                                            [
-                                            html.H1('US Domestic Airline Flights Performance', style={'textAlign': 'center', 'color': '#503D36', 'font-size': 24}),
-                                            ]
-                                        ),
-                                # REVIEW2: Dropdown creation
-                                # Create an outer division 
+                                html.P("Payload range (Kg):"),
+                                # TASK 3: Add a slider to select payload range
+                                #dcc.RangeSlider(id='payload-slider',...)
                                 html.Div([
-                                    # Add an division
-                                    html.Div([
-                                        # Create an division for adding dropdown helper text for report type
-                                        html.Div(
-                                            [
-                                            html.H2('Report Type:', style={'margin-right': '2em'}),
-                                            ]
-                                        ),
-                                        
-                                        # TODO2: Add a dropdown
-                                        dcc.Dropdown(id='input-type', 
-                                                        options=[
-                                                                {'label': 'Yearly Airline Performance Report', 'value': 'OPT1'},
-                                                                {'label': 'Yearly Airline Delay Report', 'value': 'OPT2'}
-                                                                ],
-                                                        placeholder='Select a report type',
-                                                       style={'width':'80%', 'padding':'3px', 'font-size': '20px', 'text-align-last' : 'center'}),
-                                    # Place them next to each other using the division style
-                                    ], style={'display':'flex'}),
-                                    
-                                   # Add next division 
-                                   html.Div([
-                                       # Create an division for adding dropdown helper text for choosing year
-                                        html.Div(
-                                            [
-                                            html.H2('Choose Year:', style={'margin-right': '2em'})
-                                            ]
-                                        ),
-                                        dcc.Dropdown(id='input-year', 
-                                                     # Update dropdown values using list comphrehension
-                                                     options=[{'label': i, 'value': i} for i in year_list],
-                                                     placeholder="Select a year",
-                                                     style={'width':'80%', 'padding':'3px', 'font-size': '20px', 'text-align-last' : 'center'}),
-                                            # Place them next to each other using the division style
-                                            ], style={'display': 'flex'}),  
-                                          ]),
-                                
-                                # Add Computed graphs
-                                # REVIEW3: Observe how we add an empty division and providing an id that will be updated during callback
-                                html.Div([ ], id='plot1') ,
-                                # html.Div([
-                                #         html.Div([ ], id='plot1'),
-                                # ], style={'display': 'inline-block'}),
-                                
-    
-                                html.Div([
-                                        html.Div([ ], id='plot2'),
-                                        html.Div([ ], id='plot3')
-                                ], style={'display': 'flex'}),
-                                
-                                # TODO3: Add a division with two empty divisions inside. See above disvision for example.
-                                html.Div([
-                                        html.Div([ ], id='plot4'),
-                                        html.Div([ ], id='plot5')
-                                ], style={'display': 'flex'}),
-                                
+                                    dcc.RangeSlider(
+                                        id = 'payload_slider',
+                                        min = 0,
+                                        max = 10000,
+                                        step = 1000,
+                                        marks = marks_dict,
+                                        value = [min_payload, max_payload]
+                                    ),
+                                ], style={'padding': '40px 30px'}),
+
+                                # TASK 4: Add a scatter chart to show the correlation between payload and launch success
+                                html.Div(dcc.Graph(id='success-payload-scatter-chart')),
                                 ])
 
-# Callback function definition
-# TODO4: Add 5 ouput components
-@app.callback( [Output(component_id='plot1', component_property='children'),
-                Output(component_id='plot2', component_property='children'),
-                Output(component_id='plot3', component_property='children'),
-                Output(component_id='plot4', component_property='children'),
-                Output(component_id='plot5', component_property='children')
-                ],
-               [Input(component_id='input-type', component_property='value'),
-                Input(component_id='input-year', component_property='value')],
-               # REVIEW4: Holding output state till user enters all the form information. In this case, it will be chart type and year
-               [State("plot1", 'children'), State("plot2", "children"),
-                State("plot3", "children"), State("plot4", "children"),
-                State("plot5", "children")         
-               ])
-# Add computation to callback function and return graph
-def get_graph(chart, year, children1, children2, c3, c4, c5):
-      
-        # Select data
-        df =  airline_data[airline_data['Year']==int(year)]
-       
-        if chart == 'OPT1':
-            # Compute required information for creating graph from the data
-            bar_data, line_data, div_data, map_data, tree_data = compute_data_choice_1(df)
-            
-            # Number of flights under different cancellation categories
-            bar_fig = px.bar(bar_data, x='Month', y='Flights', color='CancellationCode', title='Monthly Flight Cancellation')
-            
-            # TODO5: Average flight time by reporting airline
-            
-            
-            # Percentage of diverted airport landings per reporting airline
-            pie_fig = px.pie(div_data, values='Flights', names='Reporting_Airline', title='% of flights by reporting airline')
-            
-            # REVIEW5: Number of flights flying from each state using choropleth
-            map_fig = px.choropleth(map_data,  # Input data
-                    locations='OriginState', 
-                    color='Flights',  
-                    hover_data=['OriginState', 'Flights'], 
-                    locationmode = 'USA-states', # Set to plot as US States
-                    color_continuous_scale='GnBu',
-                    range_color=[0, map_data['Flights'].max()]) 
-            map_fig.update_layout(
-                    title_text = 'Number of flights from origin state', 
-                    geo_scope='usa') # Plot only the USA instead of globe
-            line_fig = px.line(line_data, x='Month', y='AirTime', color='Reporting_Airline', title='Average monthly flight time (minutes) by airline')
-            
-            # TODO6: Number of flights flying to each state from each reporting airline
-            tree_fig = px.treemap(tree_data , path=['DestState', 'Reporting_Airline'], 
-                    values='Flights',
-                    color='Flights',
-                    color_continuous_scale='RdBu',
-                    title='Flight count by airline to destination state'
-                )
-            
-            
-            # REVIEW6: Return dcc.Graph component to the empty division
-            return [
-                    dcc.Graph(figure=tree_fig), 
-                    dcc.Graph(figure=pie_fig),
-                    dcc.Graph(figure=map_fig),
-                    dcc.Graph(figure=bar_fig),
-                    dcc.Graph(figure=line_fig)
-                   ]
-        else:
-            # REVIEW7: This covers chart type 2 and we have completed this exercise under Flight Delay Time Statistics Dashboard section
-            # Compute required information for creating graph from the data
-            avg_car, avg_weather, avg_NAS, avg_sec, avg_late = compute_data_choice_2(df)
-            
-            # Create graph
-            carrier_fig = px.line(avg_car, x='Month', y='CarrierDelay', color='Reporting_Airline', title='Average carrrier delay time (minutes) by airline')
-            weather_fig = px.line(avg_weather, x='Month', y='WeatherDelay', color='Reporting_Airline', title='Average weather delay time (minutes) by airline')
-            nas_fig = px.line(avg_NAS, x='Month', y='NASDelay', color='Reporting_Airline', title='Average NAS delay time (minutes) by airline')
-            sec_fig = px.line(avg_sec, x='Month', y='SecurityDelay', color='Reporting_Airline', title='Average security delay time (minutes) by airline')
-            late_fig = px.line(avg_late, x='Month', y='LateAircraftDelay', color='Reporting_Airline', title='Average late aircraft delay time (minutes) by airline')
-            
-            return[dcc.Graph(figure=carrier_fig), 
-                   dcc.Graph(figure=weather_fig), 
-                   dcc.Graph(figure=nas_fig), 
-                   dcc.Graph(figure=sec_fig), 
-                   dcc.Graph(figure=late_fig)]
+# TASK 2:
+# Add a callback function for `site-dropdown` as input, `success-pie-chart` as output
+@app.callback(
+     Output(component_id = 'success-pie-chart', component_property = 'figure'),
+     [Input(component_id = 'site-dropdown', component_property = 'value')]
+)
+def piegraph_update(site_dropdown):
+    if site_dropdown == 'All Sites' or site_dropdown == 'None':
+        data  = spacex_df[spacex_df['class'] == 1]
+        fig = px.pie(
+                data,
+                names = 'Launch Site',
+                title = 'Total Success Launches by Site'
+            )
+    else:
+        data = spacex_df.loc[spacex_df['Launch Site'] == site_dropdown]
+        fig = px.pie(
+                data,
+                names = 'class',
+                title = 'Total Success Launches for Site ' + site_dropdown,
+            )
+    return fig
 
+# TASK 4:
+# Add a callback function for `site-dropdown` and `payload-slider` as inputs, `success-payload-scatter-chart` as output
+@app.callback(
+     Output(component_id = 'success-payload-scatter-chart', component_property = 'figure'),
+     [Input(component_id = 'site-dropdown', component_property = 'value'), 
+     Input(component_id = "payload_slider", component_property = "value")]
+)
+def scattergraph_update(site_dropdown, payload_slider):
+    low, high = payload_slider
+    if (site_dropdown == 'All Sites' or site_dropdown == 'None'):
+        print(payload_slider)
+        low, high = payload_slider
+        data = spacex_df[spacex_df['Payload Mass (kg)'].between(low, high)]
+        fig = px.scatter(
+                data, 
+                x = "Payload Mass (kg)", 
+                y = "class",
+                title = 'Correlation between Payload and Success for all Sites',
+                color = "Booster Version Category"
+            )
+    else:
+        print(payload_slider)
+        low, high = payload_slider
+        data = spacex_df[spacex_df['Payload Mass (kg)'].between(low, high)]
+        data_filtered = data[data['Launch Site'] == site_dropdown]
+        fig = px.scatter(
+                data_filtered,
+                x = "Payload Mass (kg)",
+                y = "class",
+                title = 'Correlation between Payload and Success for site '+ site_dropdown,
+                color = "Booster Version Category"
+            )
+    return fig
 
 # Run the app
 if __name__ == '__main__':
-    # REVIEW8: Adding dev_tools_ui=False, dev_tools_props_check=False can prevent error appearing before calling callback function
-    app.run_server(mode="inline", host="localhost", debug=False, dev_tools_ui=False, dev_tools_props_check=False)
+    app.run_server()
